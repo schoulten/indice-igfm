@@ -47,7 +47,10 @@ options(scipen = 999, OutDec = ",")
 
 ```{r dados, message = FALSE, echo = FALSE, warning = FALSE}
 
+# Carregar dados salvos de 2018 ou coletar novos dados (retirar comentários de 1.3 e 2.2)
+
 load("./data/fiscal_mun.Rdata")
+
 
 # Coletar e tratar dados
 
