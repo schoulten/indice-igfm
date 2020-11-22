@@ -1,0 +1,202 @@
+---
+title: "O que os novos prefeitos encontrarão nos cofres municipais?"
+subtitle: "Índice de Gestão Fiscal Municipal - IGFM"
+author: "[Fernando da Silva](https://github.com/schoulten)^[Grupo de Estudos de Conjuntura Econômica - fernando@gecefurg.com.br]"
+date: "`r format(Sys.time(), '%d de %B de %Y')`"
+output:
+  html_document:
+    css: style.css
+    theme: united
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    toc_depth: 3
+    number_sections: false
+    code_folding: hide
+    code_download: true
+link-citations: true
+---
+
+
+# Introdução {-}
+
+5.570 novos prefeitos foram eleitos, em um contexto e campanha ainda dominamos pela pandemia da Covid-19, e tomarão posse no próximo 1º de janeiro com muitos velhos desafios. Com o que irão se deparar nas prefeituras?
+
+Nosso país passa por um momento crítico em suas contas públicas. Estamos há quase 6 anos registrando consecutivos déficits primários - quando as despesas primárias superam a receita primária líquida -, período no qual a trajetória da dívida pública federal cresceu explosivamente e estados e municípios declararam insolvência. No contexto municipal, observa-se que muitas prefeituras possuem pouca capacidade de gerar receita para financiar até mesmo sua estrutura administrativa, constituindo-se um desafio vital para a gestão fiscal dos municípios brasileiros.
+
+Para visualizar esse problema construímos o Índice de Gestão Fiscal Municipal – IGFM, que mede a capacidade dos municípios brasileiros se sustentarem em um intervalo de 0 a 1, adaptado da metodologia da Firjan. São consideradas no cálculo do índice as receitas provenientes da atividade econômica municipal e as despesas para manter a Câmara de Vereadores e a estrutura administrativa da Prefeitura, de forma que quanto mais próximo de zero estiver o IGFM do município menor é a capacidade do mesmo gerar receitas e arcar com os custos de sua própria existência.
+
+
+```{r setup, message = FALSE, echo = FALSE, warning = FALSE}
+
+# Carregar pacotes
+
+if (!require("pacman")) install.packages("pacman")
+if (!require("rsiconfi")) devtools::install_github("tchiluanda/rsiconfi")
+pacman::p_load("knitr", "rmarkdown", "rtemps", "rsiconfi", "tidyverse", "brazilmaps", "magrittr", "sf")
+
+# Configurações gerais
+
+opts_chunk$set(message = FALSE, warning = FALSE, error = FALSE, tidy = FALSE, cache = FALSE, results = "asis")
+
+options(scipen = 999, OutDec = ",")
+
+```
+
+
+```{r dados, message = FALSE, echo = FALSE, warning = FALSE}
+
+load("./data/fiscal_mun.Rdata")
+
+# Coletar e tratar dados
+
+
+# 1) DADOS DE DESPESAS MUNICIPAIS
+
+
+# 1.1) Vetor com código IBGE das UFs do Brasil
+uf_codigos <- c(11:17, 21:29, 31:35, 41:43, 50:53)
+
+
+# 1.2) Vetor com tipos de despesas
+contas_desp <- c("01",    # Legislativa
+                 "02",    # Judiciária
+                 "03",    # Essencial à Justiça
+                 "04")    # Administração
+
+
+# 1.3) Função para coletar os dados do Anexo de Contas Anuais para todas UFs e contas selecionadas (despesas por função)
+#tbl_desp_mun <- get_dca_mun_state(year          = 2018,
+#                                  annex         = "I-E",
+#                                  state         = uf_codigos,
+#                                  arg_cod_conta = contas_desp)
+
+
+# 1.4) Consideramos somente o estágio de despesas liquidadas
+desp_mun <- tbl_desp_mun %>%
+  filter(coluna == "Despesas Liquidadas") %>%
+  select(cod_ibge, conta, valor) %>%
+  pivot_wider(id_cols = cod_ibge, names_from = conta, values_from = valor) %>%
+  rename_at(2:5, ~c("legislativa", "administracao", "essencial_a_justica", "judiciaria"))
+
+
+
+# 2)  DADOS DE RECEITAS MUNICIPAIS
+
+
+# 2.1) Vetor com tipos de receitas
+contas_rec <- c("1.0.0.0.00.0.0",     # Receitas Correntes,
+                "1.7.0.0.00.0.0",     # Transferências Correntes,
+                "1.1.1.0.00.0.0",     # Impostos
+                "1.3.0.0.00.0.0",     # Receita Patrimonial
+                "1.4.0.0.00.0.0",     # Receita Agropecuária
+                "1.5.0.0.00.0.0",     # Receita Industrial
+                "1.6.0.0.00.0.0",     # Receita de Serviços
+                "1.7.1.8.01.5.0",     # Cota-Parte do Imposto Sobre a Propriedade Territorial Rural
+                "1.7.1.8.06.0.0",     # Transferência Financeira do ICMS – Desoneração – L.C. Nº 87/96
+                "1.7.2.8.01.1.0",     # Cota-Parte do ICMS
+                "1.7.2.8.01.2.0",     # Cota-Parte do IPVA
+                "1.7.2.8.01.3.0",     # Cota-Parte do IPI - Municípios
+                "RO1.7.2.8.01.1.0",   # Cota-parte do ICMS,
+                "RO1.7.2.8.01.2.0",   # Cota-parte do IPVA,
+                "RO1.7.1.8.01.5.0",   # Cota-parte do ITR,
+                "1.7.2.8.01.3.0 Cota-Parte do IPI")
+
+
+# 2.2) Função para coletar os dados do Anexo de Contas Anuais para todas UFs e contas selecionadas (receitas orçamentárias)
+#tbl_rec_mun <- get_dca_mun_state(year          = 2018,
+#                                 annex         = "I-C",
+#                                 state         = uf_codigos,
+#                                 arg_cod_conta = contas_rec)
+
+
+# 2.3) São deduzidos os percentuais destinados à formação do Fundeb
+rec_liq <- tbl_rec_mun %>%
+  mutate(valor = ifelse(coluna == "Receitas Brutas Realizadas", valor, -valor)) %>%
+  group_by(cod_ibge, cod_conta) %>%
+  summarise(valor_liquido = sum(valor)) %>%
+  pivot_wider(id_cols = cod_ibge, names_from = cod_conta, values_from = valor_liquido) %>%
+  ungroup() %>%
+  mutate(rec_econ = RO1.0.0.0.00.0.0 - RO1.7.0.0.00.0.0 + rowSums(.[c(3:5,7:12)], na.rm = TRUE)) %>%
+  select(1,2,13) %>%
+  rename_at(2, ~c("rec_corr_liq")) %>%
+  mutate(rec_corr_liq = ifelse(rec_corr_liq < 1, 0, rec_corr_liq),
+         rec_econ = ifelse(rec_econ < 1, 0, rec_econ))
+
+
+
+# 3) Índice de Gestão Fiscal Municipal
+
+tbl_igfm <- desp_mun %>%
+  inner_join(rec_liq) %>%
+  replace(is.na(.), 0) %>%
+  mutate(indicador      = (rec_econ - legislativa - administracao - essencial_a_justica - judiciaria) / rec_corr_liq,
+         indicador = ifelse(rec_econ == 0, 0, indicador),
+         igfm_autonomia =  case_when(
+           indicador > 0.25 ~ 1,
+           indicador < 0.25 & indicador > 0 ~ indicador/0.25,
+           TRUE ~ 0),
+         categoria      = case_when(
+           igfm_autonomia > 0.8 ~ "Excelente",
+           igfm_autonomia > 0.6 & igfm_autonomia < 0.8 ~ "Boa",
+           igfm_autonomia > 0.4 & igfm_autonomia < 0.6 ~ "Difícil",
+           igfm_autonomia < 0.4 ~ "Crítica") %>% factor(levels = c("Excelente", "Boa", "Difícil", "Crítica")))
+
+
+res1_igfm <- tbl_igfm %>%
+  group_by(categoria) %>%
+  summarise(n_categoria = n()) %>%
+  ungroup() %>%
+  mutate(perc_categoria = n_categoria / sum(n_categoria) *100)
+
+
+res2_igfm <- tbl_rec_mun %>%
+  distinct(cod_ibge, populacao) %>%
+  left_join(tbl_igfm, by = "cod_ibge") %>%
+  filter(categoria %in% c("Difícil", "Crítica")) %>%
+  summarise(pop_med = mean(populacao))
+
+```
+
+
+
+# Mapa do IGFM {-}
+
+No mapa constam os resultados do IGFM categorizados em 4 níveis de situação: crítica, difícil, boa e excelente. Podemos observar que 2.415 prefeituras (44,4% do total) estão em situação crítica e difícil, ou seja, não conseguem gerar receita suficiente para custear a própria estrutura administrativa. A maior parcela desse número é composta por municípios pequenos, concentrados nas regiões Norte e Nordeste, nos quais a população média não passa de 14 mil pessoas.
+
+Esse resultado evidencia uma grande ineficiência na administração dos recursos públicos. Nesse contexto, propostas de reforma administrativa vêm sendo debatidas e indicadores como esses são importantes para entender o problema.
+
+É fundamental discutir e propor soluções para fatores como esse, caso contrário este mapa mostrará um Brasil cada vez mais crítico.
+
+
+```{r grafico, message = FALSE, echo = FALSE, warning = FALSE}
+
+# Gerar mapa com os dados
+
+get_brmap("City") %>% 
+  inner_join(tbl_igfm, c("City" = "cod_ibge")) %>% 
+  ggplot() +
+  geom_sf(aes(fill = categoria), color = NA, size = 0.15)  +
+  geom_sf(data = get_brmap("State"), fill = "transparent", colour = "black", size = 0.5) +
+  labs(title    = "Índice de Gestão Fiscal Municipal - IGFM",
+       subtitle = "Dados de 2018, metodologia adaptada da Firjan",
+       caption  = "Fonte: GECE/FURG com dados de Tesouro Nacional") +
+  scale_fill_brewer(palette = "Spectral", name = "Situação:", direction = -1) +
+  theme(axis.text         = element_blank(),
+        axis.ticks        = element_blank(),
+        plot.title        = element_text(color = "#233f91", size = 15, face = "bold"),
+        plot.subtitle      = element_text(face = "bold", colour = "gray20", size = 12),
+        plot.caption       = element_text(size = 10, face = "bold", colour = "gray20"),
+        legend.position   = c(0.15,0.2),
+        legend.title      = element_text(face = "bold", colour = "gray20", size = 12),
+        legend.background = element_blank(),
+        legend.text        = element_text(face = "bold", colour = "gray20", size = 12),
+        panel.grid        = element_line(colour = "transparent"),
+        panel.background  = element_rect(fill = "#eef1f7", colour = "#eef1f7"),
+        plot.background   = element_rect(fill = "#eef1f7", colour = "#eef1f7"))
+
+
+```
+
+
