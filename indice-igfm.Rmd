@@ -47,12 +47,10 @@ options(scipen = 999, OutDec = ",")
 
 ```{r dados, message = FALSE, echo = FALSE, warning = FALSE}
 
-# Carregar dados salvos de 2018 ou coletar novos dados (retirar comentários de 1.3 e 2.2)
-
+# Carregar dados salvos de 2018 ou coletar novos dados (retirar comentários de 1.3 e 2.2, **procedimento demorado**)
 load("./data/fiscal_mun.Rdata")
 
 
-# Coletar e tratar dados
 
 
 # 1) DADOS DE DESPESAS MUNICIPAIS
@@ -76,12 +74,13 @@ contas_desp <- c("01",    # Legislativa
 #                                  arg_cod_conta = contas_desp)
 
 
-# 1.4) Consideramos somente o estágio de despesas liquidadas
+# 1.4) Despesas: consideramos somente o estágio de despesas liquidadas
 desp_mun <- tbl_desp_mun %>%
   filter(coluna == "Despesas Liquidadas") %>%
   select(cod_ibge, conta, valor) %>%
   pivot_wider(id_cols = cod_ibge, names_from = conta, values_from = valor) %>%
   rename_at(2:5, ~c("legislativa", "administracao", "essencial_a_justica", "judiciaria"))
+
 
 
 
@@ -114,7 +113,7 @@ contas_rec <- c("1.0.0.0.00.0.0",     # Receitas Correntes,
 #                                 arg_cod_conta = contas_rec)
 
 
-# 2.3) São deduzidos os percentuais destinados à formação do Fundeb
+# 2.3) Receitas: são deduzidos os percentuais destinados à formação do Fundeb
 rec_liq <- tbl_rec_mun %>%
   mutate(valor = ifelse(coluna == "Receitas Brutas Realizadas", valor, -valor)) %>%
   group_by(cod_ibge, cod_conta) %>%
@@ -129,13 +128,15 @@ rec_liq <- tbl_rec_mun %>%
 
 
 
-# 3) Índice de Gestão Fiscal Municipal
 
+# 3) Índice de Gestão Fiscal Municipal (cálculo)
+
+# IGFM
 tbl_igfm <- desp_mun %>%
   inner_join(rec_liq) %>%
   replace(is.na(.), 0) %>%
   mutate(indicador      = (rec_econ - legislativa - administracao - essencial_a_justica - judiciaria) / rec_corr_liq,
-         indicador = ifelse(rec_econ == 0, 0, indicador),
+         indicador      = ifelse(rec_econ == 0, 0, indicador),
          igfm_autonomia =  case_when(
            indicador > 0.25 ~ 1,
            indicador < 0.25 & indicador > 0 ~ indicador/0.25,
@@ -147,6 +148,7 @@ tbl_igfm <- desp_mun %>%
            igfm_autonomia < 0.4 ~ "Crítica") %>% factor(levels = c("Excelente", "Boa", "Difícil", "Crítica")))
 
 
+# Percentual de municícips em cada uma das 4 categorias criadas acima
 res1_igfm <- tbl_igfm %>%
   group_by(categoria) %>%
   summarise(n_categoria = n()) %>%
@@ -154,6 +156,7 @@ res1_igfm <- tbl_igfm %>%
   mutate(perc_categoria = n_categoria / sum(n_categoria) *100)
 
 
+# População média do municípios em situação difícil e crítica
 res2_igfm <- tbl_rec_mun %>%
   distinct(cod_ibge, populacao) %>%
   left_join(tbl_igfm, by = "cod_ibge") %>%
@@ -199,7 +202,4 @@ get_brmap("City") %>%
         panel.background  = element_rect(fill = "#eef1f7", colour = "#eef1f7"),
         plot.background   = element_rect(fill = "#eef1f7", colour = "#eef1f7"))
 
-
 ```
-
-
